@@ -20,13 +20,13 @@ class LanguageModel(ABC):
         self.model_name = model_name
 
     @abstractmethod
-    def completion_handler(self, prompt: str, **kwargs: Any) -> str:
+    def completion_handler(self, chat: list, **kwargs: Any) -> str:
         raise NotImplementedError
 
 
 @dataclass
 class OpenAIGPT3LanguageModelSettings:
-    engine: str = "text-davinci-002"
+    engine: str = "gpt-3.5-turbo"
     temperature: float = 1.0
     top_p: float = 1.0
     frequency_penalty: float = 0.0
@@ -46,14 +46,14 @@ class OpenAIGPT3LanguageModel(LanguageModel):
 
     def completion_handler(
         self,
-        prompt: str,
+        chat: list,
         max_tokens: int,
         stop: list = None,
         **kwargs: any,
     ) -> str:
-        completion = openai.Completion.create(
-            engine=self.settings.engine,
-            prompt=prompt,
+        completion = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=chat,
             max_tokens=max_tokens,
             stop=stop,
             temperature=kwargs.get("temperature") or self.settings.temperature,
@@ -63,7 +63,7 @@ class OpenAIGPT3LanguageModel(LanguageModel):
             presence_penalty=kwargs.get("presence_penalty")
             or self.settings.presence_penalty,
         )
-        completion_text = completion.choices[0].text
+        completion_text = completion.choices[0].message.content.strip()
         return completion_text
 
     @staticmethod
@@ -158,7 +158,7 @@ class AI21JurassicLanguageModel(LanguageModel):
 
     def completion_handler(
         self,
-        prompt: str,
+        chat: list,
         max_tokens: int,
         stop: list = None,
         **kwargs: any,
@@ -168,8 +168,9 @@ class AI21JurassicLanguageModel(LanguageModel):
             "Content-Type": "application/json",
         }
         payload = {
-            "prompt": prompt,
+            "chat": chat,
             "maxTokens": max_tokens,
+            "engine": kwargs.get("engine") or self.settings.engine,
             "temperature": kwargs.get("temperature") or self.settings.temperature,
             "topP": kwargs.get("top_p") or self.settings.top_p,
             "stopSequences": stop if stop else [],
@@ -199,9 +200,9 @@ class CohereLanguageModel(LanguageModel):
         self.settings = CohereLanguageModelSettings(**kwargs)
         super().__init__(model_name)
 
-    def completion_handler(self, prompt: str, max_tokens: int, **kwargs: any) -> str:
+    def completion_handler(self, chat: list, max_tokens: int, **kwargs: any) -> str:
         prediction = self.client.generate(
-            prompt=prompt,
+            prompt=chat.join("\n"),
             max_tokens=max_tokens,
             model=kwargs.get("model_type") or self.settings.model_type,
             temperature=kwargs.get("temperature") or self.settings.model_type,
@@ -235,14 +236,14 @@ class GooseAILanguageModel(LanguageModel):
 
     def completion_handler(
         self,
-        prompt: str,
+        chat: list,
         max_tokens: int,
         stop: list = None,
         **kwargs: any,
     ) -> str:
         completion = openai.Completion.create(
             engine=self.settings.engine,
-            prompt=prompt,
+            prompt=chat.join("\n"),
             max_tokens=max_tokens,
             stop=stop,
             temperature=kwargs.get("temperature") or self.settings.temperature,
@@ -258,7 +259,7 @@ class GooseAILanguageModel(LanguageModel):
 
 async def complete_text(
     language_model: LanguageModel,
-    prompt: str,
+    chat: list,
     max_tokens: int,
     use_content_filter: bool = False,
     **kwargs: any,
@@ -270,7 +271,7 @@ async def complete_text(
             None,
             partial(
                 language_model.completion_handler,
-                prompt=prompt,
+                chat=chat,
                 max_tokens=int(max_tokens),
                 **kwargs,
             ),
